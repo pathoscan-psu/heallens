@@ -1,15 +1,18 @@
 import os
-import io
+# 💡 Must come before importing Streamlit
+os.environ["STREAMLIT_WATCHER_TYPE"] = "none"
+os.environ["STREAMLIT_SERVER_FILE_WATCHER_TYPE"] = "none"
+os.environ["STREAMLIT_WATCHDOG_WARNING"] = "false"
 import streamlit as st
+import io
 from PIL import Image
 import google.generativeai as genai
 
 # --- Configure Gemini API ---
-st.write("Key loaded:", bool(os.getenv("GOOGLE_API_KEY")))
-
+genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 # --- Streamlit setup ---
-st.set_page_config(page_title="HealLens", page_icon="🩹", layout="centered")
+st.set_page_config(page_title="PathoScan", page_icon="🩹", layout="centered")
 st.title("🩹 HealLens: AI Wound Infection Detector")
 st.caption("AI-based wound analysis for educational and demo purposes.")
 st.warning("⚠️ This app provides AI-generated insights and is **not** a substitute for professional medical advice.")
@@ -19,44 +22,52 @@ uploaded = st.file_uploader("Upload a wound image", type=["jpg", "jpeg", "png"])
 
 def analyze_image_with_gemini(image_bytes: bytes):
     """
-    Sends the wound image and a structured instruction prompt to Gemini 2.5 Flash
-    and returns a fixed 5-line output.
+    Sends the wound image and prompt to Gemini 2.5 Flash with enforced timeout
+    and robust fallback error handling for Streamlit Cloud.
     """
-    model = genai.GenerativeModel("gemini-2.5-flash")
-
-    prompt = (
-        "You are a medical imaging analysis assistant. "
-        "Analyze the attached wound image and respond in EXACTLY 5 lines as follows — "
-        "no explanations, no markdown, just plain text:\n\n"
-        "Disease Diagnosis: <the single most probable bacterial or fungal disease>\n"
-        "Probability: <only a number with % sign>\n"
-        "Urgency Advice: <choose exactly one — SEEK IMMEDIATE ATTENTION / Seek attention if causes discomfort / Attention may not be required>\n"
-        "Home Remedy: <one short at-home remedy if not severe>\n"
-        "Confidence Statement: <a single sentence showing how confident you are>\n\n"
-        "Ensure each line is separated by a newline character."
-    )
-
     try:
-        response = model.generate_content([
-            prompt,
-            {
-                "inline_data": {
-                    "mime_type": "image/jpeg",
-                    "data": image_bytes
-                }
-            }
-        ])
-        text = response.text.strip()
+        import google.generativeai as genai
+        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
-        # Force proper newlines for clean display (if Gemini merges lines)
+        model = genai.GenerativeModel("gemini-2.5-flash")
+
+        prompt = (
+            "You are a medical imaging analysis assistant. "
+            "Analyze the attached wound image and respond in EXACTLY 5 lines as follows — "
+            "no explanations, no markdown, just plain text:\n\n"
+            "Disease Diagnosis: <the single most probable bacterial or fungal disease>\n"
+            "Probability: <only a number with % sign>\n"
+            "Urgency Advice: <choose exactly one — SEEK IMMEDIATE ATTENTION / Seek attention if causes discomfort / Attention may not be required>\n"
+            "Home Remedy: <one short at-home remedy if not severe>\n"
+            "Confidence Statement: <a single sentence showing how confident you are>\n\n"
+            "Ensure each line is separated by a newline character."
+        )
+
+        # 🔒 Critical: Add request options to prevent hanging
+        response = model.generate_content(
+            [
+                prompt,
+                {
+                    "inline_data": {
+                        "mime_type": "image/jpeg",
+                        "data": image_bytes
+                    }
+                }
+            ],
+            request_options={"timeout": 30},  # seconds
+        )
+
+        text = response.text or "(No response text received.)"
+        text = text.strip()
         text = text.replace("Probability:", "\nProbability:") \
                    .replace("Urgency Advice:", "\nUrgency Advice:") \
                    .replace("Home Remedy:", "\nHome Remedy:") \
                    .replace("Confidence Statement:", "\nConfidence Statement:")
-
         return text
+
     except Exception as e:
-        return f"Error calling Gemini: {e}"
+        return f"❌ Error calling Gemini: {e}"
+
 
 # --- Main logic ---
 if uploaded:

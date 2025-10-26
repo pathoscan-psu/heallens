@@ -5,7 +5,8 @@ from PIL import Image
 import google.generativeai as genai
 
 # --- Configure Gemini API ---
-genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+st.write("Key loaded:", bool(os.getenv("GOOGLE_API_KEY")))
+
 
 # --- Streamlit setup ---
 st.set_page_config(page_title="HealLens", page_icon="🩹", layout="centered")
